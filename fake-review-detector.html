@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Amazon Fake Review Detection</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3efe6; --surface:rgba(255,252,246,.88); --ink:#1b2a2f; --muted:#5d6b6f;
+  --line:#d9d2c3; --accent:#e47911; --accent-ink:#fff; --real:#1f8a5b; --fake:#c4372b;
+  --card:#fffdf8; --cardline:#e6dfcf; --shadow:0 18px 50px rgba(40,30,10,.14);
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1a1e; --surface:rgba(18,32,37,.9); --ink:#eaf1ee; --muted:#93a6a8; --line:#28404a;
+    --accent:#ff9f2e; --accent-ink:#1a1204; --real:#3ddc97; --fake:#ff6b5c;
+    --card:#17272d; --cardline:#2a414a; --shadow:0 18px 50px rgba(0,0,0,.5); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1a1e; --surface:rgba(18,32,37,.9); --ink:#eaf1ee; --muted:#93a6a8; --line:#28404a;
+  --accent:#ff9f2e; --accent-ink:#1a1204; --real:#3ddc97; --fake:#ff6b5c;
+  --card:#17272d; --cardline:#2a414a; --shadow:0 18px 50px rgba(0,0,0,.5); color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55;overflow-x:hidden;transition:background .3s,color .3s}
+/* moving products background */
+#bg{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.row{display:flex;gap:22px;width:max-content;animation:slide 34s linear infinite}
+.row:nth-child(even){animation-direction:reverse;animation-duration:44s}
+.row:nth-child(3n){animation-duration:54s}
+@keyframes slide{to{transform:translateX(-50%)}}
+.p{width:150px;background:var(--card);border:1px solid var(--cardline);border-radius:14px;padding:12px;text-align:center;position:absolute;top:0;left:0;will-change:transform;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.p .e{font-size:52px;line-height:1.15;background:var(--bg);border-radius:10px;padding:8px 0;margin-bottom:4px}
+.prime{position:absolute;top:10px;left:10px;background:#00a8e1;color:#fff;font:700 11px Figtree,system-ui,sans-serif;padding:2px 7px;border-radius:5px}
+.cart{margin-top:8px;background:#ffd814;color:#111;border-radius:99px;font:600 12px Figtree,system-ui,sans-serif;padding:6px 0}
+.p b{display:block;font-size:13px;font-weight:600;margin-top:6px}
+.p .st{color:var(--accent);font-size:12px;letter-spacing:1px}
+.p .pr{font-size:13px;color:var(--muted)}
+#veil{position:fixed;inset:0;z-index:1;background:radial-gradient(ellipse at center,transparent 0,var(--bg) 100%);opacity:.3;pointer-events:none}
+/* header */
+header{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:center;padding:18px 28px}
+.brand{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:clamp(14px,4.2vw,19px);display:flex;align-items:center;gap:10px}
+.brand i{width:30px;height:30px;border-radius:9px;background:var(--accent);display:grid;place-items:center;font-style:normal;color:var(--accent-ink);font-size:17px}
+#theme{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:999px;font:600 14px Figtree,system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(8px)}
+#theme:focus-visible,button:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+main{position:relative;z-index:2;max-width:860px;margin:0 auto;padding:28px 20px 70px}
+h1{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:clamp(34px,6.4vw,64px);line-height:1.02;margin:10px 0 14px;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:18px;max-width:560px;margin:0 0 28px}
+.panel{background:var(--surface);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:22px;padding:24px;box-shadow:var(--shadow)}
+label{font-weight:600;font-size:15px}
+textarea{width:100%;min-height:150px;margin-top:10px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:400 16px/1.5 Figtree,system-ui,sans-serif;resize:vertical}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+button.go{background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:12px 22px;font:700 16px Figtree,system-ui,sans-serif;cursor:pointer}
+button.go:active{transform:translateY(1px)}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:7px 13px;font:500 13px Figtree,system-ui,sans-serif;cursor:pointer}
+.hint{font-size:13px;color:var(--muted);margin-right:4px}
+#out{margin-top:22px;display:none}
+.verdict{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.stamp{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:34px;border:4px solid currentColor;border-radius:12px;padding:6px 18px;transform:rotate(-4deg);animation:pop .35s ease-out}
+.stamp.real{color:var(--real)} .stamp.fake{color:var(--fake)}
+@keyframes pop{from{transform:rotate(-12deg) scale(1.5);opacity:0}}
+.meter{flex:1;min-width:200px}
+.track{height:12px;border-radius:99px;background:linear-gradient(90deg,var(--real),#e9b949,var(--fake));position:relative}
+.knob{position:absolute;top:-5px;width:6px;height:22px;border-radius:3px;background:var(--ink);transition:left .6s cubic-bezier(.2,.8,.2,1);left:0}
+.scale{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}
+.cols h3{margin:0 0 8px;font-size:15px}
+.cols ul{margin:0;padding-left:18px;font-size:14px;color:var(--muted)}
+.cols li{margin-bottom:4px}
+.note{margin-top:22px;font-size:12.5px;color:var(--muted)}
+nav{position:relative;z-index:3;display:flex;gap:6px;overflow-x:auto;padding:0 24px 6px;max-width:1000px;margin:0 auto}
+nav button{flex:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:8px 15px;font:600 14px Figtree,system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(8px)}
+nav button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+nav button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.view{display:none}.view.on{display:block}
+h2{font:800 clamp(26px,4.5vw,40px)/1.1 "Bricolage Grotesque",system-ui,sans-serif;margin:10px 0 18px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.stat{background:var(--card);border:1px solid var(--cardline);border-radius:14px;padding:14px}
+.stat b{display:block;font:800 30px "Bricolage Grotesque",system-ui,sans-serif}
+.stat span{font-size:13px;color:var(--muted)}
+.hrow{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.tag{flex:none;font-weight:700;font-size:12px;border:2px solid currentColor;border-radius:8px;padding:1px 8px}
+.tag.real{color:var(--real)}.tag.fake{color:var(--fake)}
+.bars{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.brow{display:grid;grid-template-columns:80px 1fr 30px;gap:10px;align-items:center;font-size:13px}
+.bt{height:14px;border-radius:99px;background:var(--line);overflow:hidden}.bt i{display:block;height:100%;background:var(--accent)}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.set{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.cm{display:grid;grid-template-columns:repeat(2,110px);gap:8px;margin:10px 0}
+.cm div{background:var(--card);border:1px solid var(--cardline);border-radius:10px;padding:10px;text-align:center;font-size:12px}.cm b{display:block;font-size:24px}
+@media(max-width:640px){nav{padding:0 16px 6px}.cols{grid-template-columns:1fr}header{padding:14px 16px}.panel{padding:18px}}
+@media(prefers-reduced-motion:reduce){.row{animation:none}.stamp{animation:none}.knob{transition:none}}
+</style>
+</head>
+<body>
+<div id="bg" aria-hidden="true"></div>
+<div id="veil"></div>
+
+<header>
+  <div class="brand"><i>✓</i>Amazon Fake Review Detection</div>
+  <button id="theme" type="button" aria-label="Toggle light and dark theme"><span id="ticon">🌙</span><span id="tlabel">Dark</span></button>
+</header>
+<nav id="nav">
+  <button type="button" data-v="dashboard">Dashboard</button>
+  <button type="button" data-v="analyze" class="on">Analyze Review</button>
+  <button type="button" data-v="history">Review History</button>
+  <button type="button" data-v="analytics">Analytics</button>
+  <button type="button" data-v="dataset">Dataset</button>
+  <button type="button" data-v="perf">Model Performance</button>
+  <button type="button" data-v="settings">Settings</button>
+</nav>
+
+<main>
+  <div class="view on" id="v-analyze">
+  <h1>Is that review real?</h1>
+  <p class="sub">Paste any e-commerce product review. We check its wording and classify it as fake or genuine.</p>
+
+  <section class="panel">
+    <label for="rev">Product review</label>
+    <textarea id="rev" placeholder="Paste a review here…"></textarea>
+    <div class="bar">
+      <button class="go" id="run" type="button">Check review</button>
+      <button class="ghost" id="paste" type="button">📋 Paste</button>
+      <button class="ghost" id="clear" type="button">✕ Clear</button>
+      <span class="hint">Try a sample:</span>
+      <button class="ghost" type="button" data-s="0">Suspicious</button>
+      <button class="ghost" type="button" data-s="1">Detailed</button>
+      <button class="ghost" type="button" data-s="2">Promo spam</button>
+      <button class="ghost" type="button" data-s="3">Short &amp; vague</button>
+      <button class="ghost" type="button" data-s="4">Balanced</button>
+    </div>
+
+    <div id="out" aria-live="polite">
+      <div class="verdict">
+        <div class="stamp" id="stamp">GENUINE</div>
+        <div class="meter">
+          <div style="font-weight:600" id="pct"></div>
+          <div class="track"><div class="knob" id="knob"></div></div>
+          <div class="scale"><span>Genuine</span><span>Fake</span></div>
+        </div>
+      </div>
+      <div class="cols">
+        <div><h3>Signs of a fake</h3><ul id="bad"></ul></div>
+        <div><h3>Signs of a genuine review</h3><ul id="good"></ul></div>
+      </div>
+      <div class="bar">
+        <button class="ghost" id="copy" type="button">Copy result</button>
+        <button class="ghost" id="again" type="button">Check another review</button>
+      </div>
+    </div>
+    <p class="note">
+  </div>
+
+  <div class="view" id="v-dashboard"><h2>Dashboard</h2><div class="panel"><div class="stats" id="stats"></div><h3 style="margin:22px 0 4px">Latest reviews</h3><div id="dlist"></div></div></div>
+  <div class="view" id="v-history"><h2>Review history</h2><div class="panel"><button class="ghost" id="hclear" type="button">Clear history</button><div id="hlist"></div></div></div>
+  <div class="view" id="v-analytics"><h2>Analytics</h2><div class="panel" id="abars"></div></div>
+  <div class="view" id="v-dataset"><h2>Dataset</h2><div class="panel"><p class="hint">10 labelled sample reviews used to test the model. Load one into the analyzer to try it.</p><div class="tw"><table id="dtab"></table></div></div></div>
+  <div class="view" id="v-perf"><h2>Model performance</h2><div class="panel" id="perf"></div></div>
+  <div class="view" id="v-settings"><h2>Settings</h2><div class="panel">
+    <div class="set"><label for="th">Fake threshold: <b id="thv"></b></label><input type="range" id="th" min="30" max="80" value="50"></div>
+    <div class="set"><label for="bgt">Floating products background</label><input type="checkbox" id="bgt" checked></div>
+    <div class="set"><span>Saved review history</span><button class="ghost" id="sclear" type="button">Clear history</button></div>
+    <div class="set"><span>Restore default settings</span><button class="ghost" id="sreset" type="button">Reset</button></div>
+  </div></div>
+</main>
+
+<script>
+(function(){
+  /* ---------- moving Amazon-style products ---------- */
+  var items=[
+    ["🎧","Wireless Headphones","₹2,499","★★★★☆"],["⌚","Smart Watch Series","₹3,999","★★★★☆"],
+    ["📱","5G Smartphone","₹14,999","★★★★☆"],["📷","Mirrorless Camera","₹42,990","★★★★★"],
+    ["👟","Running Shoes","₹1,899","★★★★☆"],["🎒","Travel Backpack","₹1,199","★★★★★"],
+    ["💻","Laptop 15.6\"","₹48,990","★★★★☆"],["🔊","Bluetooth Speaker","₹1,799","★★★★☆"],
+    ["📚","Bestseller Novel","₹349","★★★★★"],["🕶️","Polarized Sunglasses","₹799","★★★★☆"],
+    ["🍳","Non-stick Pan Set","₹1,299","★★★★☆"],["🪑","Ergonomic Chair","₹8,490","★★★★☆"],
+    ["🖱️","Gaming Mouse","₹999","★★★★☆"],["☕","Coffee Maker","₹3,250","★★★★☆"],
+    ["🧴","Skincare Combo","₹649","★★★☆☆"],["🎮","Game Console","₹44,990","★★★★★"],
+    ["💡","Smart LED Bulb","₹499","★★★★☆"],["🧳","Cabin Luggage","₹3,799","★★★★☆"]
+  ];
+  var bg=document.getElementById("bg"),fl=[];
+  items.forEach(function(it){
+    var d=document.createElement("div");d.className="p";
+    d.innerHTML='<span class="prime">prime</span><div class="e">'+it[0]+'</div><b>'+it[1]+'</b><div class="st">'+it[3]+'</div><div class="pr">'+it[2]+'</div><div class="cart">Add to Cart</div>';
+    bg.appendChild(d);
+    var sp=0.25+Math.random()*0.45,a=Math.random()*6.28;
+    fl.push({el:d,x:Math.random()*innerWidth,y:Math.random()*innerHeight,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r:Math.random()*40-20,vr:(Math.random()-.5)*.18,w:150,h:200});
+  });
+  function tick(){
+    var W=innerWidth,H=innerHeight;
+    for(var i=0;i<fl.length;i++){
+      var f=fl[i];
+      f.x+=f.vx;f.y+=f.vy;f.r+=f.vr;
+      if(f.x<0){f.x=0;f.vx=Math.abs(f.vx)}
+      if(f.x>W-f.w){f.x=Math.max(0,W-f.w);f.vx=-Math.abs(f.vx)}
+      if(f.y<0){f.y=0;f.vy=Math.abs(f.vy)}
+      if(f.y>H-f.h){f.y=Math.max(0,H-f.h);f.vy=-Math.abs(f.vy)}
+      f.el.style.transform="translate("+f.x+"px,"+f.y+"px) rotate("+f.r+"deg)";
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+
+  /* ---------- theme toggle ---------- */
+  var root=document.documentElement;
+  function isDark(){
+    var t=root.getAttribute("data-theme");
+    if(t) return t==="dark";
+    return window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function paint(){
+    var d=isDark();
+    document.getElementById("ticon").textContent=d?"☀️":"🌙";
+    document.getElementById("tlabel").textContent=d?"Light":"Dark";
+  }
+  try{var saved=localStorage.getItem("rc-theme");if(saved)root.setAttribute("data-theme",saved);}catch(e){}
+  paint();
+  document.getElementById("theme").addEventListener("click",function(){
+    var next=isDark()?"light":"dark";
+    root.setAttribute("data-theme",next);
+    try{localStorage.setItem("rc-theme",next);}catch(e){}
+    paint();
+  });
+
+  /* ---------- review classifier (rule-based) ---------- */
+  var hype=["best product","best ever","highly recommend","must buy","five star","5 star","amazing","perfect","love it","life changing","100%","a+","superb","awesome","excellent","fantastic","wonderful","great product","worth every","value for money","go for it","don’t think twice","dont think twice","buy it now"];
+  var promo=["discount","coupon","whatsapp","telegram","contact me","click","link","free gift","offer","seller","order now","buy now","visit","promo","dm me"];
+  var contrast=["but","however","although","except","unfortunately","only issue","downside","wish","though"];
+  var usage=["after a week","after a month","after 2","after 3","weeks","months","days","been using","using it for","daily","every day","since i","bought it","delivered","arrived"];
+  var specific=["battery","charging","size","fit","color","colour","quality","sound","camera","screen","packaging","delivery","warranty","price","material","stitching","bass","hours","brightness","comfortable"];
+
+  function has(t,list){var n=0;for(var i=0;i<list.length;i++){if(t.indexOf(list[i])>-1)n++;}return n;}
+
+  function analyze(text){
+    var t=text.toLowerCase(),words=t.match(/[a-z0-9’']+/g)||[];
+    var bad=[],good=[],s=35;
+    var wc=words.length;
+    if(wc<8){s+=22;bad.push("Very short ("+wc+" words) with little to verify")}
+    else if(wc<20){s+=8;bad.push("Short review with few details")}
+    else if(wc>60){s-=10;good.push("Long and descriptive ("+wc+" words)")}
+    var ex=(text.match(/!/g)||[]).length;
+    if(ex>=3){s+=14;bad.push(ex+" exclamation marks")}
+    var caps=(text.match(/\b[A-Z]{3,}\b/g)||[]).length;
+    if(caps>=2){s+=12;bad.push("Several ALL-CAPS words")}
+    var h=has(t,hype);
+    if(h>=3){s+=22;bad.push("Stacked generic praise ("+h+" stock phrases)")}
+    else if(h>=1){s+=h*6;bad.push("Generic praise phrases")}
+    var p=has(t,promo);
+    if(p>=1){s+=18+p*3;bad.push("Promotional or contact wording")}
+    if(wc>=8){
+      var uniq={},u=0;for(var i=0;i<words.length;i++){if(!uniq[words[i]]){uniq[words[i]]=1;u++}}
+      if(u/wc<0.6){s+=14;bad.push("Repeats the same words a lot")}
+    }
+    var c=has(t,contrast);
+    if(c>=1){s-=12;good.push("Mentions a downside or contrast")}
+    var us=has(t,usage);
+    if(us>=1){s-=12;good.push("Describes real usage or timeline")}
+    var sp=has(t,specific);
+    if(sp>=2){s-=12;good.push("Names concrete product details")}
+    else if(sp===0&&wc>=8){s+=8;bad.push("No concrete product details")}
+    if(/\d/.test(t)&&wc>=8){s-=6;good.push("Includes specific numbers")}
+    s=Math.max(4,Math.min(97,Math.round(s)));
+    if(!bad.length)bad.push("No strong red flags found");
+    if(!good.length)good.push("No clear signs of real use found");
+    return {score:s,bad:bad,good:good};
+  }
+
+  var samples=[
+    "Best product ever!!! Amazing quality, perfect, must buy!!! Highly recommend to everyone. 5 star, love it!!!",
+    "Bought this for my daily commute about 3 weeks ago. Battery lasts around 20 hours and the bass is decent, but the ear cups get warm after an hour. The case feels a bit cheap. Still worth it at this price.",
+    "Great product. Contact me on WhatsApp for 50% discount coupon, click the link and order now!",
+    "Nice",
+    "Mixed feelings. The mixer grinds well and is quieter than my old one, but the lid is hard to lock and the jar scratched within two weeks. Customer support replied in 3 days. Okay for the price, not great."
+  ];
+  function li(arr){return arr.map(function(x){return "<li>"+x.replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</li>"}).join("")}
+
+  function run(){
+    var v=document.getElementById("rev").value.trim();
+    if(!v){document.getElementById("rev").focus();return}
+    var r=analyze(v),fake=r.score>=th;rec(v,r.score,fake);
+    var st=document.getElementById("stamp");
+    st.textContent=fake?"FAKE":"GENUINE";
+    st.className="stamp "+(fake?"fake":"real");
+    document.getElementById("pct").textContent=r.score+"% fake likelihood";
+    document.getElementById("bad").innerHTML=li(r.bad);
+    document.getElementById("good").innerHTML=li(r.good);
+    document.getElementById("out").style.display="block";
+    var k=document.getElementById("knob");k.style.left="0";
+    requestAnimationFrame(function(){requestAnimationFrame(function(){k.style.left="calc("+r.score+"% - 3px)"})});
+  }
+  var th=50,hist=[];
+  try{var h0=JSON.parse(localStorage.getItem("rc-h")||"[]");if(h0.length)hist=h0;var t0=+localStorage.getItem("rc-th");if(t0)th=t0;}catch(e){}
+  function $(i){return document.getElementById(i)}
+  function esc(x){return String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;")}
+  function save(){try{localStorage.setItem("rc-h",JSON.stringify(hist));localStorage.setItem("rc-th",th)}catch(e){}}
+  function rec(t,s,f){hist.unshift({t:t.slice(0,160),s:s,f:f});hist=hist.slice(0,50);save();}
+  function rows(a){return a.length?a.map(function(x){return '<div class="hrow"><span class="tag '+(x.f?'fake':'real')+'">'+(x.f?'FAKE':'GENUINE')+'</span><div style="flex:1">'+esc(x.t)+'</div><span class="hint">'+x.s+'%</span></div>'}).join(""):'<p class="hint">No reviews yet. Open Analyze Review and check one.</p>'}
+  function cards(c){return '<div class="stats">'+c.map(function(k){return '<div class="stat"><b>'+k[0]+'</b><span>'+k[1]+'</span></div>'}).join("")+'</div>'}
+  var D=[["Best product ever!!! Amazing, perfect, must buy!!!",1],["Nice",1],["Great product. Click the link for free gift coupon, order now!",1],["AWESOME AWESOME AWESOME. 5 star. Highly recommend. Love it!!!",1],["Good good good product very good good quality",1],["Used it daily for 2 months. Battery gives about 8 hours, but the strap started peeling and the screen scratches easily.",0],["The jacket fits true to size and the stitching is solid. Delivery took 4 days, however the colour is slightly darker than the photos.",0],["Bought this blender last week. It crushes ice well and is fairly quiet, although the lid is hard to lock.",0],["Camera is decent in daylight but noisy at night. After 3 weeks the charging port feels loose, so I wish the build was better.",0],["Sound quality is good for 999 rupees and the bass is okay, but the mic is poor on calls.",0]];
+  var V={
+    dashboard:function(){var n=hist.length,f=hist.filter(function(x){return x.f}).length,avg=n?Math.round(hist.reduce(function(a,x){return a+x.s},0)/n):0;
+      $("stats").outerHTML='<div class="stats" id="stats">'+cards([[n,"Reviews checked"],[f,"Flagged fake"],[n-f,"Genuine"],[avg+"%","Average fake score"]]).replace('<div class="stats">','').replace(/<\/div>$/,'')+'</div>';
+      $("dlist").innerHTML=rows(hist.slice(0,5))},
+    history:function(){$("hlist").innerHTML=rows(hist)},
+    analytics:function(){var b=[0,0,0,0,0],L=["0-19%","20-39%","40-59%","60-79%","80-100%"];hist.forEach(function(x){b[Math.min(4,Math.floor(x.s/20))]++});var m=Math.max(1,Math.max.apply(null,b));
+      $("abars").innerHTML='<p class="hint">Reviews by fake-likelihood score</p><div class="bars">'+b.map(function(c,i){return '<div class="brow"><span>'+L[i]+'</span><div class="bt"><i style="width:'+c/m*100+'%"></i></div><b>'+c+'</b></div>'}).join("")+'</div>'},
+    dataset:function(){$("dtab").innerHTML='<tr><th>Review</th><th>Label</th><th></th></tr>'+D.map(function(d,i){return '<tr><td>'+esc(d[0])+'</td><td><span class="tag '+(d[1]?'fake':'real')+'">'+(d[1]?'FAKE':'GENUINE')+'</span></td><td><button class="ghost" data-i="'+i+'" type="button">Analyze</button></td></tr>'}).join("");
+      var b=$("dtab").querySelectorAll("[data-i]");for(var i=0;i<b.length;i++){b[i].addEventListener("click",function(){$("rev").value=D[+this.getAttribute("data-i")][0];show("analyze");run();})}},
+    perf:function(){var tp=0,fp=0,tn=0,fn=0;D.forEach(function(d){var p=analyze(d[0]).score>=th?1:0;if(p&&d[1])tp++;else if(p)fp++;else if(d[1])fn++;else tn++});
+      var n=D.length,pr=tp+fp?tp/(tp+fp):0,rc=tp+fn?tp/(tp+fn):0,f1=pr+rc?2*pr*rc/(pr+rc):0;function P(x){return Math.round(x*100)+"%"}
+      $("perf").innerHTML=cards([[P((tp+tn)/n),"Accuracy"],[P(pr),"Precision"],[P(rc),"Recall"],[P(f1),"F1 score"]])+'<h3 style="margin:20px 0 0">Confusion matrix</h3><div class="cm"><div><b>'+tp+'</b>Fake caught</div><div><b>'+fn+'</b>Fake missed</div><div><b>'+fp+'</b>False alarm</div><div><b>'+tn+'</b>Genuine kept</div></div><p class="note">Measured live on the 10 sample reviews in the Dataset tab at a '+th+'% threshold. Too small to prove real-world accuracy.</p>'},
+    settings:function(){$("th").value=th;$("thv").textContent=th+"%"}
+  };
+  function show(v){var b=$("nav").children;for(var i=0;i<b.length;i++){b[i].classList.toggle("on",b[i].getAttribute("data-v")===v)}
+    var vs=document.querySelectorAll(".view");for(var j=0;j<vs.length;j++){vs[j].classList.toggle("on",vs[j].id==="v-"+v)}
+    if(V[v])V[v]();window.scrollTo(0,0);}
+  var nb=$("nav").children;for(var q=0;q<nb.length;q++){nb[q].addEventListener("click",function(){show(this.getAttribute("data-v"))})}
+  $("th").addEventListener("input",function(){th=+this.value;$("thv").textContent=th+"%";save();});
+  $("bgt").addEventListener("change",function(){$("bg").style.display=this.checked?"block":"none"});
+  function wipe(){hist=[];save();var a=$("hlist");if(a)a.innerHTML=rows(hist);}
+  $("hclear").addEventListener("click",wipe);$("sclear").addEventListener("click",wipe);
+  $("sreset").addEventListener("click",function(){th=50;save();$("bgt").checked=true;$("bg").style.display="block";V.settings();});
+  document.getElementById("run").addEventListener("click",run);
+  function reset(){
+    var ta=document.getElementById("rev");ta.value="";
+    document.getElementById("out").style.display="none";ta.focus();
+  }
+  document.getElementById("clear").addEventListener("click",reset);
+  document.getElementById("again").addEventListener("click",reset);
+  document.getElementById("paste").addEventListener("click",function(){
+    var ta=document.getElementById("rev");
+    try{
+      navigator.clipboard.readText().then(function(t){ta.value=t;if(t.trim())run();}).catch(function(){ta.focus();});
+    }catch(e){ta.focus();}
+  });
+  document.getElementById("copy").addEventListener("click",function(){
+    var b=this,txt=document.getElementById("stamp").textContent+" - "+document.getElementById("pct").textContent;
+    function done(){b.textContent="Copied!";setTimeout(function(){b.textContent="Copy result"},1500);}
+    try{navigator.clipboard.writeText(txt).then(done).catch(done);}catch(e){done();}
+  });
+  var gs=document.querySelectorAll("[data-s]");
+  for(var i=0;i<gs.length;i++){gs[i].addEventListener("click",function(){
+    document.getElementById("rev").value=samples[+this.getAttribute("data-s")];run();
+  })}
+})();
+</script>
+</body>
+</html>
